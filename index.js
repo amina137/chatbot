@@ -1,6 +1,7 @@
 // index.js — ES‑module style ("type": "module" in package.json)
 import express from "express";
 import cors from "cors";
+import fetch from "node-fetch";            // explicit fetch for all Node 18 builds
 import admin from "firebase-admin";
 
 // ---------- basic middleware ----------
@@ -19,7 +20,7 @@ const db = admin.firestore();
 // ---------- Hugging Face helper ----------
 async function askLLM(prompt) {
     const res = await fetch(
-        "https://api-inference.huggingface.co/models/google/flan-t5-large",
+        "https://api-inference.huggingface.co/models/google/flan-t5-base",
         {
             method: "POST",
             headers: {
@@ -41,14 +42,19 @@ async function askLLM(prompt) {
     return data[0]?.generated_text ?? "";
 }
 
-// ---------- helper to extract first JSON block ----------
+// ---------- helper to extract JSON ----------
 function safeParse(str) {
+    str = str.trim().replace(/^"+|"+$/g, "");   // strip wrapping quotes/newlines
+
+    // If braces already present, use them
     const first = str.indexOf("{");
     const last  = str.lastIndexOf("}");
-    if (first === -1 || last === -1 || last <= first) {
-        throw new Error("No JSON object found in HF reply\n" + str);
+    if (first !== -1 && last !== -1 && last > first) {
+        return JSON.parse(str.slice(first, last + 1));
     }
-    return JSON.parse(str.slice(first, last + 1));
+
+    // Otherwise wrap with braces
+    return JSON.parse("{" + str + "}");
 }
 
 // ---------- /chatbot endpoint ----------
@@ -58,12 +64,13 @@ app.post("/chatbot", async (req, res) => {
 
         /* 1. Ask the LLM to produce intent JSON */
         const intentPrompt = `
-Return ONLY valid minified JSON in this schema —
+Return ONLY minified JSON — exactly:
 {"intent":"<intent>","parameters":{"student_id":"<id-or-null>"}}
 User: "${message}"
 `;
+
         const intentJSON = await askLLM(intentPrompt);
-        console.log("HF raw:", intentJSON);          // <- optional log
+        console.log("HF raw:", intentJSON);
         const intent = safeParse(intentJSON);
 
         /* 2. Handle intents */

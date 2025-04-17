@@ -1,7 +1,8 @@
 // index.js — ES‑module style ("type": "module" in package.json)
 import express from "express";
 import cors from "cors";
-import fetch from "node-fetch";          // Node‑18 has global fetch, but this keeps it explicit
+// If you removed node-fetch from package.json, delete the next line.
+// import fetch from "node-fetch";
 import admin from "firebase-admin";
 
 // ---------- basic middleware ----------
@@ -20,7 +21,7 @@ const db = admin.firestore();
 // ---------- Hugging Face helper ----------
 async function askLLM(prompt) {
     const res = await fetch(
-        "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.1",
+        "https://api-inference.huggingface.co/models/google/flan-t5-large",
         {
             method: "POST",
             headers: {
@@ -38,7 +39,7 @@ async function askLLM(prompt) {
         throw new Error(`HF error ${res.status}: ${await res.text()}`);
     }
 
-    const data = await res.json();          // [{ generated_text: "..." }]
+    const data = await res.json(); // [{ generated_text: "..." }]
     return data[0].generated_text;
 }
 

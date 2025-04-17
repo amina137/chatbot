@@ -2,11 +2,15 @@ import express from "express";
 import cors from "cors";
 import { Configuration, OpenAIApi } from "openai";
 import admin from "firebase-admin";
+import OpenAI from "openai";
 
 const app = express();
 app.use(cors());                  // allow requests from your site
 app.use(express.json());
 
+const openai = new OpenAI({              // NEW
+    apiKey: process.env.OPENAI_API_KEY,
+});
 // --- Firebase Admin ----------------------------
 admin.initializeApp({
     credential: admin.credential.cert(

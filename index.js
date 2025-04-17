@@ -1,12 +1,12 @@
-// index.js  — ES‑module style (because "type": "module" in package.json)
+// index.js — ES‑module style ("type": "module" in package.json)
 import express from "express";
 import cors from "cors";
-import OpenAI from "openai";
+import fetch from "node-fetch";          // Node‑18 has global fetch, but this keeps it explicit
 import admin from "firebase-admin";
 
 // ---------- basic middleware ----------
 const app = express();
-app.use(cors());           // TODO: restrict origin in production
+app.use(cors({ origin: "https://tarkizplus.web.app" }));   // tighten CORS here
 app.use(express.json());
 
 // ---------- Firebase Admin ----------
@@ -17,17 +17,37 @@ admin.initializeApp({
 });
 const db = admin.firestore();
 
-// ---------- OpenAI ----------
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-});
+// ---------- Hugging Face helper ----------
+async function askLLM(prompt) {
+    const res = await fetch(
+        "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.1",
+        {
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${process.env.HF_TOKEN}`,
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+                inputs: prompt,
+                parameters: { temperature: 0.2, max_new_tokens: 128 },
+            }),
+        }
+    );
+
+    if (!res.ok) {
+        throw new Error(`HF error ${res.status}: ${await res.text()}`);
+    }
+
+    const data = await res.json();          // [{ generated_text: "..." }]
+    return data[0].generated_text;
+}
 
 // ---------- /chatbot endpoint ----------
 app.post("/chatbot", async (req, res) => {
     try {
         const { message } = req.body;
 
-        /* 1. Ask GPT to produce an intent JSON */
+        /* 1. Ask the LLM to produce intent JSON */
         const intentPrompt = `
       You are an assistant for a teaching institute.
       User question: "${message}"
@@ -35,12 +55,8 @@ app.post("/chatbot", async (req, res) => {
       {"intent":"get_student_stats","parameters":{"student_id":"S001"}}
     `;
 
-        const { choices } = await openai.chat.completions.create({
-            model: "gpt-3.5-turbo",
-            messages: [{ role: "user", content: intentPrompt }],
-        });
-
-        const intent = JSON.parse(choices[0].message.content.trim());
+        const intentJSON = await askLLM(intentPrompt);
+        const intent = JSON.parse(intentJSON.trim());
 
         /* 2. Handle intents */
         let reply;
